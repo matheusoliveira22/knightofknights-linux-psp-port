@@ -62,6 +62,9 @@ title screen.
 
 ## 2. Generate the game code
 
+This step is required: the game code the port runs is the decompile of your exe, translated to C.
+It cannot be shipped in this repository, so every checkout generates it once.
+
 ```sh
 tools/decompile.sh "../game/Knight050/Knight of Knights.exe" ~/ghidra_12.1.4_PUBLIC
 tools/postgen.sh
@@ -127,16 +130,33 @@ PSP-2000 and later models (and PPSSPP), not on the PSP-1000.
 | Action | PC keyboard | PSP |
 |---|---|---|
 | Move | arrows | d-pad / analog stick |
-| Attack / confirm | Z | Cross |
-| Second attack / cancel | X | Circle |
-| Other buttons | C, V | Square, Triangle |
-| Item ring menu | S | R |
-| Z + X together | (both keys) | L |
+| Right-hand attack (hold: special move) | X | Square |
+| Left-hand attack (hold: special move) | Z | Triangle |
+| Registered combo (hold: magic) | Z + X | L |
+| Jump | C | Cross |
+| Use item | V | Circle |
+| Item ring / pick up | S | R |
 | Minimap | F1 | Select |
 | Pause (battle) | Enter or P | Start |
 | Quit | Esc | Home |
 
-A game controller works on PC as well.
+Menus and the item ring:
+
+| | PC keyboard | PSP |
+|---|---|---|
+| Confirm | Z or X | Cross (or Start) |
+| Back | Backspace | Circle |
+| Ring: select / equip | Z or X | Cross |
+| Ring: close | S | Circle or R |
+| Ring: drop item | C | Square |
+
+The original game has no back key. The port adds one: it returns from character select to stage
+select, from stage select to mode select, and from mode select to the title; in the options it
+acts as Exit. A PSP button still held when the screen changes (for example Circle after closing the
+ring) is ignored until you release it.
+
+The 2P modes need a second set of controls, so on the PSP they are greyed out and the cursor
+skips them. A game controller works on PC as well.
 
 ## Options and test helpers
 
@@ -147,7 +167,7 @@ A game controller works on PC as well.
   scene, mesh rebuilds/loads, uploads, file reads). `env NAME=value` sets an environment option
   (`env KOK_SPIKE=30000` changes the threshold in microseconds). `shot f1,f2` saves screenshots at
   those frames.
-- `KOK_BOT=1` plays automatically (menus, then Stage 1 fights). `KOK_BOT=explore` walks through
+- `KOK_BOT=1` plays automatically (menus, then Stage 1 fights). `KOK_BOT=menu` only gets through the menus. `KOK_BOT=explore` walks through
   rooms ignoring enemies. `KOK_MAP=2` (with the bot) starts the second stage.
 - `KOK_SHOT=prefix:f1,f2` and `KOK_KEYS="frame:+VK,..."` (PC) take screenshots and script key
   presses.

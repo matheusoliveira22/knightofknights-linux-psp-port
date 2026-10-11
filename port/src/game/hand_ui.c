@@ -59,6 +59,9 @@ void f_430110(void)
             f_4029e0(5);
             f_43dee0();
             (*state)++;
+        } else if (game_menu_cancel()) {   /* port: back = Exit */
+            f_43dee0();
+            (*state)++;
         }
         /* cursor sprite 0 */
         int32_t h = M32(0x488c58);

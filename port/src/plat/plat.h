@@ -19,9 +19,16 @@
 void plat_set_widescreen(int on);
 float plat_virtual_width(void);
 
+/* Input context for platforms whose buttons change meaning between menus and play (PSP): the game
+ * reports what is on screen every frame. */
+enum { PLAT_INPUT_MENU, PLAT_INPUT_GAME, PLAT_INPUT_RING };
+void plat_set_input_context(int ctx);
+
 #ifdef PSP
+#define PLAT_SINGLE_PLAYER 1     /* one pad: the 2P modes are greyed out and skipped */
 #define PLAT_HUD_SCALE 1.3f
 #else
+#define PLAT_SINGLE_PLAYER 0
 #define PLAT_HUD_SCALE 1.0f
 #endif
 

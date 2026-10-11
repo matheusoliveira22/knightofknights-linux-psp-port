@@ -1,6 +1,7 @@
 #!/bin/sh
 # Run the PSP build in PPSSPP with scripted input and collect screenshots into a contact sheet.
 # usage: psprun.sh out.png "f1,f2,..." ["frame:+VK,frame:-VK,..."] [timeout_s]
+# PSPPAD="frame:+0x4000,..." presses PSP buttons (before the menu/play/ring mapping); PSPENV="A=1 B=2" sets env options
 set -e
 OUT=$1; SHOTS=$2; KEYS=$3; TMO=${4:-180}
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -9,7 +10,7 @@ flatpak kill org.ppsspp.PPSSPP 2>/dev/null || true
 sleep 1
 cp "$ROOT/build-psp/EBOOT.PBP" "$G/"
 rm -f "$G"/shot_*.ppm "$G/log.txt"
-{ echo "shot $SHOTS"; echo perf; [ -n "$KEYS" ] && echo "keys $KEYS"; echo exit; [ -n "$NOAUDIO" ] && echo noaudio; for e in $PSPENV; do echo "env $e"; done; } > "$G/test.txt"
+{ echo "shot $SHOTS"; echo perf; [ -n "$KEYS" ] && echo "keys $KEYS"; [ -n "$PSPPAD" ] && echo "pad $PSPPAD"; echo exit; [ -n "$NOAUDIO" ] && echo noaudio; for e in $PSPENV; do echo "env $e"; done; } > "$G/test.txt"
 LAST=${SHOTS##*,}
 # software rendering: the hardware renderer keeps framebuffers on the host GPU, so the game's own
 # VRAM screenshots would be stale there (set PSPHW=1 to watch the hardware renderer instead)

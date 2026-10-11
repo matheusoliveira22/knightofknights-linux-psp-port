@@ -328,6 +328,7 @@ int plat_tex_wrap565(int w, int h, uint16_t *px)
 }
 
 void plat_tex_before_write(int id) { (void)id; }   /* GL orders texture updates after draws */
+void plat_set_input_context(int ctx) { (void)ctx; }  /* keyboard keys keep their meaning */
 
 void plat_tex_sync565(int id, int key_on, uint16_t key)
 {

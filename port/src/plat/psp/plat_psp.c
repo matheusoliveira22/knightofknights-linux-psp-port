@@ -180,29 +180,67 @@ static int frame_no;
 static struct { int frame, vk, down; } test_keys[256];
 static int ntest_keys;
 static uint8_t held[256];
+static struct { int frame; unsigned bits; int down; } test_pad[128];   /* "pad" lines: PSP buttons */
+static int ntest_pad;
+static unsigned held_pad;
 static int test_noaudio, test_perf;
 
-/* PSP pad -> the keys the game reads for player 1 (FUN_00439240): arrows, Z X C V S.
- * L presses Z and X together (registered combo / magic), SELECT is F1 (minimap on/off, also in the
- * ring menu), START is Enter. Escape (quits the original) is not mapped. */
+/* PSP pad -> the keys the game reads for player 1 (FUN_00439240): arrows, Z X C V S. Menu and play
+ * buttons are separate; the game reports what is on screen (plat_set_input_context):
+ *   play:  Square X (right-hand attack), Triangle Z (left-hand attack), Cross C (jump),
+ *          Circle V (use item), L Z+X (combo / magic), R S (ring / pick up), START Enter (pause)
+ *   menus: Cross or START confirm (Z, which the original menus accept); Circle is back (VK_BACK,
+ *          handled by game_menu_cancel in sys.c, the original has no cancel)
+ *   ring:  Cross Z (select), Circle or R S (close), Square C (drop the item), START Enter (pause)
+ * SELECT is F1 (minimap on/off) everywhere. Escape (quits the original) is not mapped. */
+static int input_ctx = PLAT_INPUT_MENU;
+void plat_set_input_context(int ctx) { input_ctx = ctx; }
+
 static void poll_pad(void)
 {
     SceCtrlData pad;
     sceCtrlPeekBufferPositive(&pad, 1);
     memset(keys, 0, sizeof keys);
+    for (int i = 0; i < ntest_pad; i++)
+        if (test_pad[i].frame == frame_no) held_pad = test_pad[i].down ? held_pad | test_pad[i].bits : held_pad & ~test_pad[i].bits;
+    pad.Buttons |= held_pad;
     int lx = pad.Lx - 128, ly = pad.Ly - 128;
     if ((pad.Buttons & PSP_CTRL_UP) || ly < -64) keys[0x26] = 0x80;
     if ((pad.Buttons & PSP_CTRL_DOWN) || ly > 64) keys[0x28] = 0x80;
     if ((pad.Buttons & PSP_CTRL_LEFT) || lx < -64) keys[0x25] = 0x80;
     if ((pad.Buttons & PSP_CTRL_RIGHT) || lx > 64) keys[0x27] = 0x80;
-    if (pad.Buttons & PSP_CTRL_CROSS) keys['Z'] = 0x80;
-    if (pad.Buttons & PSP_CTRL_CIRCLE) keys['X'] = 0x80;
-    if (pad.Buttons & PSP_CTRL_SQUARE) keys['C'] = 0x80;
-    if (pad.Buttons & PSP_CTRL_TRIANGLE) keys['V'] = 0x80;
-    if (pad.Buttons & PSP_CTRL_RTRIGGER) keys['S'] = 0x80;
-    if (pad.Buttons & PSP_CTRL_LTRIGGER) keys['Z'] = keys['X'] = 0x80;
-    if (pad.Buttons & PSP_CTRL_SELECT) keys[0x70] = 0x80;   /* F1 */
-    if (pad.Buttons & PSP_CTRL_START) keys[0x0d] = 0x80;
+    /* a button still held when the context changes (closing the ring with Circle, confirming a menu
+     * with Cross) is ignored until released, so it does not act again with its new meaning */
+    static int last_ctx = -1;
+    static unsigned latched;
+    const unsigned actions = PSP_CTRL_CROSS | PSP_CTRL_CIRCLE | PSP_CTRL_SQUARE | PSP_CTRL_TRIANGLE |
+                             PSP_CTRL_LTRIGGER | PSP_CTRL_RTRIGGER | PSP_CTRL_START;
+    unsigned b = pad.Buttons;
+    if (input_ctx != last_ctx) { latched = b & actions; last_ctx = input_ctx; }
+    latched &= b;
+    b &= ~latched;
+    if (b & PSP_CTRL_SELECT) keys[0x70] = 0x80;   /* F1 */
+    switch (input_ctx) {
+    case PLAT_INPUT_MENU:
+        if (b & (PSP_CTRL_CROSS | PSP_CTRL_START)) keys['Z'] = 0x80;
+        if (b & PSP_CTRL_CIRCLE) keys[0x08] = 0x80;
+        break;
+    case PLAT_INPUT_RING:
+        if (b & PSP_CTRL_CROSS) keys['Z'] = 0x80;
+        if (b & (PSP_CTRL_CIRCLE | PSP_CTRL_RTRIGGER)) keys['S'] = 0x80;
+        if (b & PSP_CTRL_SQUARE) keys['C'] = 0x80;
+        if (b & PSP_CTRL_START) keys[0x0d] = 0x80;
+        break;
+    default:
+        if (b & PSP_CTRL_SQUARE) keys['X'] = 0x80;
+        if (b & PSP_CTRL_TRIANGLE) keys['Z'] = 0x80;
+        if (b & PSP_CTRL_CROSS) keys['C'] = 0x80;
+        if (b & PSP_CTRL_CIRCLE) keys['V'] = 0x80;
+        if (b & PSP_CTRL_RTRIGGER) keys['S'] = 0x80;
+        if (b & PSP_CTRL_LTRIGGER) keys['Z'] = keys['X'] = 0x80;
+        if (b & PSP_CTRL_START) keys[0x0d] = 0x80;
+        break;
+    }
     for (int i = 0; i < ntest_keys; i++)
         if (test_keys[i].frame == frame_no) held[test_keys[i].vk] = (uint8_t)test_keys[i].down;
     for (int i = 0; i < 256; i++) if (held[i]) keys[i] = 0x80;
@@ -580,7 +618,7 @@ void plat_clear(int color, uint32_t rgb, int depth)
 }
 
 /* Test harness: <data>/test.txt with lines "shot f1,f2,...", "keys frame:+VK,frame:-VK,...",
- * "exit" (quit after the last shot), "noaudio", "perf" and "env NAME=value". Shots go to <data>/shot_<frame>.ppm (the whole 480x272 screen). */
+ * "pad frame:+0xBITS,frame:-0xBITS,..." (PSP buttons, e.g. 0x4000 Cross, 0x2000 Circle), "exit" (quit after the last shot), "noaudio", "perf" and "env NAME=value". Shots go to <data>/shot_<frame>.ppm (the whole 480x272 screen). */
 static int shot_frames[64], nshots, test_exit;
 
 static void test_load(void)
@@ -603,6 +641,15 @@ static void test_load(void)
                 test_keys[ntest_keys].frame = f;
                 test_keys[ntest_keys].vk = vk & 255;
                 test_keys[ntest_keys++].down = down;
+                if (*q == ',') q++;
+            }
+        } else if (!strncmp(l, "pad ", 4)) {
+            for (char *q = l + 4; *q && ntest_pad < 128; ) {
+                int f = (int)strtol(q, &q, 10);
+                if (*q++ != ':') break;
+                test_pad[ntest_pad].down = *q++ == '+';
+                test_pad[ntest_pad].bits = (unsigned)strtoul(q, &q, 16);
+                test_pad[ntest_pad++].frame = f;
                 if (*q == ',') q++;
             }
         } else if (!strcmp(l, "exit")) test_exit = 1;

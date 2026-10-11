@@ -381,6 +381,8 @@ int game_frame(void)
     /* battle (states 1, 2) and event scenes (4) fill a wide screen; the menus are 4:3 artwork */
     int32_t st = M32(0x488c50);
     plat_set_widescreen(st == 1 || st == 2 || st == 4);
+    plat_set_input_context(st != 1 && st != 2 && st != 4 ? PLAT_INPUT_MENU
+                           : MU32(0x48bb6c) != 0 ? PLAT_INPUT_RING : PLAT_INPUT_GAME);   /* player 1's ring state */
     im_set_hud_scale(st == 1 || st == 2 ? PLAT_HUD_SCALE : 1.0f);
     if (paused && M32(0x488c50) != 1) { paused = 0; dx_audio_pause(0); }
     if (paused) {
@@ -450,6 +452,74 @@ int game_frame(void)
     return 1;
 }
 
+/* Mode select (FUN_004310b0): 0 = 1P, 1 = 2P Play A, 2 = 2P Play B, 3 = Option. With a single pad
+ * (PSP) the cursor jumps over the 2P modes and they are drawn greyed out. */
+int32_t game_menu_step(int32_t cur, int dir)
+{
+    cur += dir;
+    if (PLAT_SINGLE_PLAYER && (cur == 1 || cur == 2)) cur = dir > 0 ? 3 : 0;
+    return cur;
+}
+
+void game_menu_decorate(void)
+{
+    if (!PLAT_SINGLE_PLAYER) return;
+    for (int s = 1; s <= 2; s++)          /* sprites 1, 2: the 2P labels, four vertex colours each */
+        for (int v = 0; v < 4; v++) MU32(0x49b788 + s * 0x8c + v * 0x20) = 0xb0000000;   /* black overlay: darkens the label */
+}
+
+/* Menu "back", which the original does not have: a fresh press of VK_BACK (PC Backspace, PSP
+ * Circle) fades the screen out and returns to the previous one (mode select -> title, stage select
+ * -> mode select, character select -> stage select); in the options it acts as Exit. The screens
+ * call these from their input states (tools/patches.py, hand_ui.c). */
+static int32_t menu_back_to = -1;
+
+int game_menu_cancel(void)
+{
+    static int prev;
+    uint8_t k[256];
+    plat_keyboard_state(k);
+    int down = (k[0x08] & 0x80) != 0, hit = down && !prev;
+    prev = down;
+    if (hit) f_4029e0(6);
+    return hit;
+}
+
+int game_menu_back(int32_t to)
+{
+    if (!game_menu_cancel()) return 0;
+    menu_back_to = to;
+    return 1;
+}
+
+int game_menu_backing(void) { return menu_back_to >= 0; }
+
+/* the screen that follows a fade-out: `next`, or the previous screen when going back, entered
+ * past its initial wait so it fades straight in */
+int32_t game_menu_next(int32_t next)
+{
+    if (menu_back_to < 0) return next;
+    next = menu_back_to;
+    menu_back_to = -1;
+    switch (next) {
+    case 1: M32(0x4a84d8) = 1; f_401d50(0, 1000); break;   /* title, back to the title music */
+    case 2: M32(0x4a84f4) = 1; break;                       /* mode select */
+    case 3: M32(0x4a84fc) = 1; break;                       /* stage select */
+    }
+    return next;
+}
+
+/* character select (FUN_00431910) has no fade-out state of its own: state 6 waits for the fade
+ * started by the back press, then hides its sprites (5..13) and leaves */
+void game_menu_char_back(void)
+{
+    if (MF(0x488c6c) < MF(0x44d948)) return;
+    for (int n = 5; n <= 13; n++) MU8(0x49b7fc + n * 0x8c) = 0;
+    M32(0x4a8500) = 0;
+    M32(0x4a84d0) = 0;
+    MU32(0x4a3848) = game_menu_next(4);
+}
+
 /* per-tick collision pass (FUN_00429a00), timed for the perf log */
 void prof_collide(void)
 {
@@ -499,8 +569,11 @@ void f_437980(uint32_t i)
  * Arrows are camera relative (the battle camera looks down +z). */
 void game_bot(uint8_t *k)
 {
-    static int on = -1, t, explore;
-    if (on < 0) { const char *e = getenv("KOK_BOT"); on = e != NULL; explore = e && !strcmp(e, "explore"); }
+    static int on = -1, t, explore, menu_only;
+    if (on < 0) {
+        const char *e = getenv("KOK_BOT");
+        on = e != NULL; explore = e && !strcmp(e, "explore"); menu_only = e && !strcmp(e, "menu");
+    }
     if (!on) return;
     {   /* KOK_MAP=n: the stage picked at stage select loads map n instead (2 = the second stage) */
         const char *m = getenv("KOK_MAP");
@@ -522,7 +595,7 @@ void game_bot(uint8_t *k)
         }
         return;
     }
-    if (M32(0x488c50) != 1 || !M8(0x480340 + 0x140)) return;
+    if (menu_only || M32(0x488c50) != 1 || !M8(0x480340 + 0x140)) return;   /* menu: play by hand */
     if (explore) M32(0x480340 + 0xd0) = M32(0x480340 + 0xcc);   /* explorer: the enemies can't stop it */
     vec3 p, e, best = { 0, 0, 0 };
     float bd = 1e9f;

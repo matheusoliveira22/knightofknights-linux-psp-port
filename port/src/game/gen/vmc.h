@@ -173,6 +173,13 @@ void im_set_uv_transform(const mat4 *world, const mat4 *view);
 /* frame begin / present (Viewport::Clear starts a frame, the Blt to the primary ends it) */
 void dx_frame_begin(void);
 void prof_collide(void);   /* FUN_00429a00 timed for the perf log (sys.c) */
+int32_t game_menu_step(int32_t cur, int dir);   /* mode select cursor (sys.c) */
+void game_menu_decorate(void);
+int game_menu_cancel(void);                      /* menu back (sys.c) */
+int game_menu_back(int32_t to);
+int game_menu_backing(void);
+int32_t game_menu_next(int32_t next);
+void game_menu_char_back(void);
 void dx_present(void);
 
 #include "protos.h"

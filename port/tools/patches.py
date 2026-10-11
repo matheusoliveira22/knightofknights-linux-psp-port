@@ -129,6 +129,26 @@ FUNC = [("g_424000.c", "427c30", _ITEM_KIND)] + \
         (r"case 0x404433:", "case 1:", 1),
         (r"case 0x404496:", "case 3: case 5:", 1),
         (r"case 0x404503:", "case 4: case 6:", 1)]),
+    # port feature: on single-pad platforms (PSP) the mode select cursor skips the 2P modes and
+    # shows them greyed out (sys.c game_menu_step / game_menu_decorate)
+    ("g_430000.c", "4310b0", [
+        (r"\(M32\(0x4a3820\) = \(M32\(0x4a3820\) \+ -\(1\)\)\);", "(M32(0x4a3820) = game_menu_step(M32(0x4a3820), -1));", 1),
+        (r"\(M32\(0x4a3820\) = \(M32\(0x4a3820\) \+ 1\)\);", "(M32(0x4a3820) = game_menu_step(M32(0x4a3820), 1));", 1),
+        (r"(\} while \(\(iVar4 < 0x80\)\);\n)(            VRETV\(puVar2\);\n        case 0x4:)", r"\1            game_menu_decorate();\n\2", 1),
+        # port feature: menu back (sys.c game_menu_back): mode select -> title
+        (r"(if \(\(\(MU32\(0x4a3aac\) & 0x30\) == 0\)\) \{\n)(\s+)(goto LAB_004311d6;)",
+         r"\1\2if (game_menu_back(1)) (MU32(0x4a84f4) = 4);\n\2\3", 1),
+        (r"if \(\(M32\(0x4a3820\) == 3\)\) \{", "if ((!game_menu_backing() && (M32(0x4a3820) == 3))) {", 1),
+        (r"\(MU32\(0x4a3848\) = 3\);", "(MU32(0x4a3848) = game_menu_next(3));", 1)]),
+    # stage select -> mode select, character select -> stage select
+    ("g_430000.c", "431310", [
+        (r"(        case 3:\n            ;\n            f_439240\(0x480340\);\n)",
+         r"\1            if (game_menu_back(2)) { (M32(0x4a84fc) = 4); VRETV(iVar2); }\n", 1),
+        (r"\(MU32\(0x4a3848\) = 4\);", "(MU32(0x4a3848) = game_menu_next(4));", 1)]),
+    ("g_430000.c", "431910", [
+        (r"(    switch \(M32\(0x4a8500\)\) \{\n)", r"\1        case 6:\n            game_menu_char_back();\n            VRET;\n", 1),
+        (r"(            if \(\(M32\(0x4a84ec\) == 0\)\) \{\n                f_439240\(0x480340\);\n)",
+         r"\1                if (game_menu_back(3)) {\n                    (MU32(0x488c68) = 1); (MF(0x488c6c) = 0.0f); (MU32(0x488c70) = 0x3ccccccd);\n                    (M32(0x4a8500) = 6);\n                    VRET;\n                }\n", 1)]),
     # ring pages (magic 0x42c9f0, items 0x42cb50, 0x42ccb0): each icon's angle is fild [esp+0x18] =
     # ebx, the 0, 360, 720... counter; Ghidra used the slot index (or a string pointer), so every icon
     # sat within a degree of the first one while the slots stayed separately selectable
