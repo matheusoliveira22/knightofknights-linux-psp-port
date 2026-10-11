@@ -1,0 +1,21 @@
+# build outputs; build-data and dist contain the original game data (not redistributable)
+build-pc/
+build-psp/
+build-data/
+dist/
+
+# decompiler output and the game code generated from it: made from your own copy of the game
+# with tools/decompile.sh and tools/postgen.sh (see README.md)
+re/decomp/
+re/xlat/
+re/notes/
+src/game/gen/g_4*.c
+src/game/gen/fnreg.c
+src/game/gen/protos.h
+
+# PSP menu images, made from the game's title screen by tools/make_data.sh
+psp/*.PNG
+
+# python
+tools/.venv/
+__pycache__/
