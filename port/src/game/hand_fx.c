@@ -1,5 +1,6 @@
 /* Hand-ported effect helpers that Ghidra could not decompile cleanly. */
 #include "gen/vmc.h"
+#include "../core/prof.h"
 
 /* FUN_00407790(file, out): flatten an effect mesh into D3DVERTEX triangles.
  * out[0] = face count * 3, out[1] -> vertices {x,y,z, nx,ny,nz, u, 1-v} (0x20 bytes each). */
@@ -217,6 +218,7 @@ uint32_t f_407360(int32_t frame, int32_t actor, uint32_t type, uint32_t p4, int3
         if (M32(p) == 0) { M32(p) = 1; slot = (int32_t)i; break; }
     }
     if (slot < 0) return 0;
+    pf[PF_FX]++;
     uint32_t s = (uint32_t)slot * 0xb8;
     uint32_t parts = vm_malloc((uint32_t)count * 0x3c);
     MU32(0x4a3ca0 + s) = parts;

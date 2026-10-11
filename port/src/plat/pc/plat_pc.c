@@ -1,5 +1,6 @@
 /* PC backend: SDL2 window/input/audio + OpenGL 1.x fixed-function rendering. */
 #include "../plat.h"
+#include "../../core/prof.h"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
 #include <stdio.h>
@@ -78,11 +79,13 @@ const char *plat_data_path(const char *rel)
 uint8_t *plat_read_file(const char *path, size_t *size)
 {
     char full[1024];
+    pf[PF_FILE_READ]++;
     if (!resolve_ci(path, full, sizeof full)) return NULL;
     FILE *f = fopen(full, "rb");
     if (!f) return NULL;
     fseek(f, 0, SEEK_END);
     long n = ftell(f);
+    pf[PF_FILE_KB] += (uint32_t)(n >> 10);
     fseek(f, 0, SEEK_SET);
     uint8_t *d = malloc(n + 1);
     if (fread(d, 1, n, f) != (size_t)n) { fclose(f); free(d); return NULL; }

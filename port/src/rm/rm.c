@@ -5,6 +5,7 @@
  * Face colour only contributes its alpha (used for fades / sorted transparency).
  */
 #include "rm.h"
+#include "../core/prof.h"
 #include "../fmt/xfile.h"
 #include "../fmt/bmp.h"
 #include "../plat/plat.h"
@@ -35,7 +36,8 @@ typedef struct {
     rmmat_t *fmat;         /* per face */
     /* render cache: triangles batched by (texture, colour) */
     int dirty;
-    struct batch { int tex; uint32_t color; int start, count; float sphere[4]; void *gpu; } *batches;
+    int recolor;           /* only the emissive colours changed: recolour the batches, no rebuild */
+    struct batch { int tex; uint32_t color; int start, count, face0; float sphere[4]; void *gpu; } *batches;
     int nbatches;
     pvert_t *verts;
     vec3 center;
@@ -314,6 +316,7 @@ void rm_init(void) { }
 
 rmh rm_frame_create(rmh parent)
 {
+    pf[PF_FRAME_NEW]++;
     rmh h = alloc_obj(T_FRAME);
     obj_t *o = get(h, T_FRAME);
     mat_identity(&o->fr.local);
@@ -796,15 +799,51 @@ static void mb_add_xmesh(meshb_t *m, xnode_t *root, const xnode_t *mesh, const m
     m->dirty = 1;
 }
 
+static int rm_mb_load_impl(rmh h, const char *path);
 int rm_mb_load(rmh h, const char *path)
 {
+    extern uint64_t prof_us[16];
+    uint64_t t0 = plat_time_us();
+    int r = rm_mb_load_impl(h, path);
+    prof_us[10] += plat_time_us() - t0;
+    return r;
+}
+
+/* Parsed .x files, most recent first: a room change loads the same item/weapon meshes once per slot
+ * (FUN_00405bd0), and on the PSP each load is a memory stick read plus a parse. */
+#define XCACHE 8
+static struct { char path[96]; xnode_t *root; } xcache[XCACHE];
+
+static xnode_t *x_load_cached(const char *path)
+{
+    int i;
+    for (i = 0; i < XCACHE && xcache[i].root; i++)
+        if (!strcmp(xcache[i].path, path)) break;
+    if (i == XCACHE || !xcache[i].root) {
+        xnode_t *root = x_load(path);
+        if (!root || strlen(path) >= sizeof xcache[0].path) return root;   /* caller frees uncached */
+        i = XCACHE - 1;
+        if (xcache[i].root) x_free(xcache[i].root);
+        snprintf(xcache[i].path, sizeof xcache[i].path, "%s", path);
+        xcache[i].root = root;
+    }
+    /* move to the front */
+    typeof(xcache[0]) e = xcache[i];
+    memmove(&xcache[1], &xcache[0], (size_t)i * sizeof xcache[0]);
+    xcache[0] = e;
+    return e.root;
+}
+
+static int rm_mb_load_impl(rmh h, const char *path)
+{
+    pf[PF_MB_LOAD]++;
     obj_t *o = get(h, T_MESHB);
     if (!o) return 0;
-    xnode_t *root = x_load(path);
+    xnode_t *root = x_load_cached(path);
     if (!root) { plat_log("rm: cannot load mesh '%s'", path); return 0; }
     for (int i = 0; i < root->nkids; i++)
         if (!strcmp(root->kids[i]->tmpl, "Mesh")) { mb_add_xmesh(&o->mb, root, root->kids[i], NULL); break; }
-    x_free(root);
+    if (xcache[0].root != root) x_free(root);   /* path too long to cache */
     return 1;
 }
 
@@ -842,7 +881,10 @@ void rm_mb_set_emissive(rmh h, float r, float g, float b)
     for (int i = 0; i < m->nf; i++) {
         m->fmat[i].emissive[0] = r; m->fmat[i].emissive[1] = g; m->fmat[i].emissive[2] = b;
     }
-    m->dirty = 1;
+    /* every face gets the same emissive, so faces batched together stay together: the characters'
+     * flashes (hits, charging, status) only need new vertex colours, not a rebuild */
+    if (m->batches && !m->dirty) m->recolor = 1;
+    else m->dirty = 1;
 }
 
 void rm_mb_scale(rmh h, float sx, float sy, float sz)
@@ -995,7 +1037,7 @@ static int tri_cmp(const void *a, const void *b)
     return ca < cb ? -1 : ca > cb;
 }
 
-static void emit_chunks(meshb_t *m, int tex, uint32_t col, int start, int end)
+static void emit_chunks(meshb_t *m, int tex, uint32_t col, int start, int end, int face0)
 {
     int ntri = (end - start) / 3;
     if (ntri > CHUNK_TRIS && (col >> 24) == 255) {
@@ -1008,22 +1050,34 @@ static void emit_chunks(meshb_t *m, int tex, uint32_t col, int start, int end)
         if (hi[2] - lo[2] > hi[split_axis] - lo[split_axis]) split_axis = 2;
         qsort(m->verts + start, (size_t)ntri, sizeof(tri3_t), tri_cmp);
         int mid = start + ntri / 2 * 3;
-        emit_chunks(m, tex, col, start, mid);
-        emit_chunks(m, tex, col, mid, end);
+        emit_chunks(m, tex, col, start, mid, face0);
+        emit_chunks(m, tex, col, mid, end, face0);
         return;
     }
     m->batches = realloc(m->batches, (m->nbatches + 1) * sizeof *m->batches);
     struct batch *b = &m->batches[m->nbatches++];
-    b->tex = tex; b->color = col; b->start = start; b->count = end - start; b->gpu = NULL;
+    b->tex = tex; b->color = col; b->start = start; b->count = end - start; b->face0 = face0; b->gpu = NULL;
     batch_sphere(m->verts, start, end, b->sphere);
 }
 
+static void mb_build_impl(meshb_t *m);
 static void mb_build(meshb_t *m)
 {
+    extern uint64_t prof_us[16];
+    uint64_t t0 = plat_time_us();
+    mb_build_impl(m);
+    prof_us[9] += plat_time_us() - t0;
+}
+
+static void mb_build_impl(meshb_t *m)
+{
+    pf[PF_MB_BUILD]++;
+    m->recolor = 0;
     batches_free(m);
     free(m->verts);
     int ntri = 0;
     for (int i = 0; i < m->nf; i++) if (m->fcount[i] >= 3) ntri += m->fcount[i] - 2;
+    pf[PF_MB_TRIS] += ntri;
     m->verts = malloc((ntri ? ntri : 1) * 3 * sizeof(pvert_t));
     char *done = calloc(m->nf ? m->nf : 1, 1);
     int out = 0;
@@ -1046,7 +1100,7 @@ static void mb_build(meshb_t *m)
                 }
             }
         }
-        emit_chunks(m, tex, col, start, out);
+        emit_chunks(m, tex, col, start, out, i);
     }
     free(done);
     vec3 mn, mx;
@@ -1280,9 +1334,26 @@ typedef struct { float depth; mat4 mv; meshb_t *m; int batch; } tdraw_t;
 static tdraw_t *tlist;
 static int ntlist, captlist;
 
+/* new batch colours after rm_mb_set_emissive; the GE copy of a recoloured batch is rebuilt at its
+ * next draw */
+static void mb_recolor(meshb_t *m)
+{
+    m->recolor = 0;
+    for (int i = 0; i < m->nbatches; i++) {
+        struct batch *b = &m->batches[i];
+        uint32_t col = face_rgba(&m->fmat[b->face0]);
+        if (col == b->color) continue;
+        for (int k = b->start; k < b->start + b->count; k++) m->verts[k].color = col;
+        b->color = col;
+        plat_static_free(b->gpu);
+        b->gpu = NULL;
+    }
+}
+
 static void draw_mb(meshb_t *m, const mat4 *world)
 {
     if (m->dirty) mb_build(m);
+    else if (m->recolor) mb_recolor(m);
     mat4 mv;
     mat_mul(&mv, world, &vp.view);
     int set = 0;

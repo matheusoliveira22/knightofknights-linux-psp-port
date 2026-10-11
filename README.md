@@ -143,8 +143,10 @@ A game controller works on PC as well.
 - `KOK_WIDE=0` turns widescreen off. On the PSP, put the line `env KOK_WIDE=0` in `test.txt`
   next to the EBOOT.
 - `test.txt` on the PSP: `perf` logs frame and CPU timings once a second to `log.txt` (next to the
-  EBOOT). `env NAME=value` sets an environment option. `shot f1,f2` saves screenshots at those
-  frames.
+  EBOOT) and itemises every battle frame slower than 40 ms (`SPIKE` lines: logic, collision,
+  scene, mesh rebuilds/loads, uploads, file reads). `env NAME=value` sets an environment option
+  (`env KOK_SPIKE=30000` changes the threshold in microseconds). `shot f1,f2` saves screenshots at
+  those frames.
 - `KOK_BOT=1` plays automatically (menus, then Stage 1 fights). `KOK_BOT=explore` walks through
   rooms ignoring enemies. `KOK_MAP=2` (with the bot) starts the second stage.
 - `KOK_SHOT=prefix:f1,f2` and `KOK_KEYS="frame:+VK,..."` (PC) take screenshots and script key

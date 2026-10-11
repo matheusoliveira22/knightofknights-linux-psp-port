@@ -6,6 +6,7 @@
  * drops primitives that cross z = near, which would eat floor polygons close to the camera.
  */
 #include "../plat.h"
+#include "../../core/prof.h"
 #include <pspkernel.h>
 #include <pspdisplay.h>
 #include <pspgu.h>
@@ -142,6 +143,7 @@ static void present(void);
 
 uint8_t *plat_read_file(const char *path, size_t *size)
 {
+    pf[PF_FILE_READ]++;
     present();   /* show a finished frame before a (possibly long) load */
     char full[512];
     norm_path(path, full, sizeof full);
@@ -149,6 +151,7 @@ uint8_t *plat_read_file(const char *path, size_t *size)
     if (!f) return NULL;
     fseek(f, 0, SEEK_END);
     long n = ftell(f);
+    pf[PF_FILE_KB] += (uint32_t)(n >> 10);
     fseek(f, 0, SEEK_SET);
     uint8_t *d = malloc(n + 1);
     if (!d || fread(d, 1, n, f) != (size_t)n) { fclose(f); free(d); return NULL; }
@@ -255,6 +258,7 @@ static void retire(void *p)
 static void free_retired(unsigned serial)
 {
     int b = serial & 1;
+    pf[PF_GPU_RETIRED] += retired[b].n;
     for (int i = 0; i < retired[b].n; i++) free(retired[b].p[i]);
     retired[b].n = 0;
 }
@@ -603,7 +607,10 @@ static void test_load(void)
             }
         } else if (!strcmp(l, "exit")) test_exit = 1;
         else if (!strcmp(l, "noaudio")) test_noaudio = 1;
-        else if (!strcmp(l, "perf")) test_perf = 1;   /* once a second: frame time, GE stats, heap */
+        else if (!strcmp(l, "perf")) {   /* once a second: frame time, GE stats, heap; slow frames itemised */
+            test_perf = 1;
+            if (!getenv("KOK_SPIKE")) setenv("KOK_SPIKE", "40000", 1);
+        }
         else if (!strncmp(l, "env ", 4)) {   /* env NAME=value */
             char *eq = strchr(l + 4, '=');
             if (eq) { *eq = 0; setenv(l + 4, eq + 1, 1); }
@@ -878,6 +885,7 @@ void plat_draw_tris_static(int tex, const pvert_t *v, int n, void **cache, const
     if (!g || g->n != n) {
         retire(g);
         g = memalign(64, sizeof *g + (size_t)n * sizeof(gvert_t));
+        pf[PF_GPU_ALLOC]++;
         if (!g) { plat_draw_tris(tex, v, n, blend, zwrite, ztest); return; }
         g->n = n;
         for (int i = 0; i < n; i++)

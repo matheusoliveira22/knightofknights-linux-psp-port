@@ -2,6 +2,7 @@
 /* Hand-written replacements for the original's Win32 / DirectX setup layer (0x401000-0x402f80)
  * and its file I/O (options, character saves, fonts). Signatures match gen/protos.h. */
 #include "gen/vmc.h"
+#include "../core/prof.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -418,9 +419,29 @@ int game_frame(void)
     uint32_t fn = MU32(0x453238 + (uint32_t)M32(0x488c50) * 4);
     extern uint64_t prof_us[16];
     extern uint64_t prof_tick_t0;
+    uint64_t before[16];
+    memcpy(before, prof_us, sizeof before);
+    memset(pf, 0, sizeof pf);
     uint64_t t0 = prof_tick_t0 = plat_time_us();
     uint32_t r = CALLVA(fn)();
-    prof_us[2] += plat_time_us() - t0;
+    uint64_t dt = plat_time_us() - t0;
+    prof_us[2] += dt;
+    {   /* KOK_SPIKE=us: itemise battle/event frames whose CPU time (vblank wait excluded) exceeds it */
+        static int64_t limit = -1;
+        if (limit < 0) { const char *e = getenv("KOK_SPIKE"); limit = e ? atoll(e) : 0; }
+        uint64_t d[16];
+        for (int i = 0; i < 16; i++) d[i] = prof_us[i] - before[i];
+        uint64_t cpu = dt > d[7] ? dt - d[7] : 0;
+        int32_t s = M32(0x488c50);
+        if (limit > 0 && (int64_t)cpu > limit && (s == 1 || s == 2 || s == 4))
+            plat_log("SPIKE state %d: %llu us cpu (logic %llu in %llu ticks [collision %llu], scene %llu [rebuild %llu], load %llu, upload %llu, blt %llu, vblank %llu)"
+                     " | rebuilds %u (%u tris) loads %u frames+ %u files %u (%u KB) fx %u texrows %u gpu+ %u freed %u",
+                     M32(0x488c50), (unsigned long long)cpu, (unsigned long long)d[5], (unsigned long long)d[6],
+                     (unsigned long long)d[8], (unsigned long long)d[3], (unsigned long long)d[9], (unsigned long long)d[10],
+                     (unsigned long long)d[0], (unsigned long long)d[1],
+                     (unsigned long long)d[7], pf[PF_MB_BUILD], pf[PF_MB_TRIS], pf[PF_MB_LOAD], pf[PF_FRAME_NEW],
+                     pf[PF_FILE_READ], pf[PF_FILE_KB], pf[PF_FX], pf[PF_TEX_ROWS], pf[PF_GPU_ALLOC], pf[PF_GPU_RETIRED]);
+    }
     if ((r & 0xff) == 0) {
         plat_log("state %d returned failure", M32(0x488c50));
         return 0;

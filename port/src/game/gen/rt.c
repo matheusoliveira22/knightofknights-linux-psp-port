@@ -173,6 +173,7 @@ void dx_frame_begin(void)
 {
     if (in_frame) return;
     in_frame = 1;
+    im_redirect_next(0, 0);
     plat_frame_begin(0);
 }
 

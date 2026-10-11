@@ -2,6 +2,7 @@
 #include "../fmt/bmp.h"
 #include "../plat/plat.h"
 #include "../core/vm.h"
+#include "../core/prof.h"
 #include <math.h>
 #include <stdio.h>
 #include <malloc.h>
@@ -207,9 +208,10 @@ void dd_put565(uint32_t h, int x, int y, uint16_t c)
     touch_at(s, x, y);
 }
 
+uint32_t pf[PF_N];
 uint64_t prof_us[16];   /* 0 upload, 1 cpu blt, 2 state handler (logic + draw calls), 3 scene render,
                         * 4 audio callback (mixing + music decode), 5 logic ticks, 6 tick count,
-                        * 7 vblank wait (PSP), 8 collision pass (FUN_00429a00) */
+                        * 7 vblank wait (PSP), 8 collision pass (FUN_00429a00), 9 mesh rebuilds, 10 mesh loads */
 static int upload(surf_t *s, tile_t *t)
 {
     if (t->tex && !t->dirty) return t->tex;
@@ -239,6 +241,7 @@ static int upload(surf_t *s, tile_t *t)
         }
         if (y < cy0) cy0 = y;
         cy1 = y + 1;
+        pf[PF_TEX_ROWS]++;
     }
     t->reconvert = 0;
     if (!t->tex) t->tex = plat_tex_create16(t->tw, t->th, t->tex16);
@@ -618,12 +621,16 @@ static int blend_mode(void)
     return BLEND_ALPHA;
 }
 
+static uint32_t redir_from, redir_to;
+void im_redirect_next(uint32_t from, uint32_t to) { redir_from = from; redir_to = to; }
+
 void im_draw(int prim, const tlvertex_t *v, int n)
 {
     static pvert_t buf[1024];
     float um = 1, vm = 1;
     int tex = 0;
     uint32_t th = rs[RS_TEXTUREHANDLE];
+    if (redir_from && th == redir_from) { th = redir_to; redir_from = 0; }
     surf_t *s = S(th);
     float voff = 0;
     if (s) {
