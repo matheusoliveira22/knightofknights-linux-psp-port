@@ -53,6 +53,9 @@ void im_draw(int primtype, const tlvertex_t *v, int n);
 /* 2D draws (im_draw sprites, text onto the back buffer) are scaled by k about the screen corner,
  * edge midpoint or centre nearest to each element, so HUD groups stay aligned and on screen */
 void im_set_hud_scale(float k);
+/* while on, 2D draws belong to one centred block (the minimap's 7x7 tile grid): no HUD scale and
+ * no per-element anchoring, only the shift that keeps the centre of a wide screen */
+void im_hud_center(int on);
 /* the next im_draw textured with surface `from` samples surface `to` instead (once). The HUD text
  * routines draw into private surfaces this way: the original shares one texture between them,
  * redrawn before each sprite, which would mean several full re-uploads per frame. 0 cancels. */

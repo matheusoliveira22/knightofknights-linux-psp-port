@@ -289,6 +289,8 @@ int dd_texture(uint32_t h, float *umax, float *vmax)
 
 static float hud_k = 1.0f;
 void im_set_hud_scale(float k) { hud_k = k; }
+static int hud_center;
+void im_hud_center(int on) { hud_center = on; }
 
 /* 2D layout of an element with bounding box (x0,y0)-(x1,y1) for the current frame: the HUD scale
  * (PSP) and the widescreen extra width. The anchor comes from the left/centre/right third of the
@@ -303,6 +305,11 @@ static int hud_map(float x0, float y0, float x1, float y1, hudmap_t *m)
 {
     float extra = plat_virtual_width() - SCREEN_W;
     if (hud_k == 1.0f && extra < 0.5f) return 0;
+    if (hud_center) {
+        if (extra < 0.5f) return 0;
+        m->ax = m->ay = 0; m->sx = m->sy = 1; m->off = extra / 2;
+        return 1;
+    }
     if (x1 - x0 >= SCREEN_W / 2 || y1 - y0 >= SCREEN_H / 2) {
         if (extra < 0.5f) return 0;
         m->ax = m->ay = m->off = 0; m->sx = (SCREEN_W + extra) / SCREEN_W; m->sy = 1;

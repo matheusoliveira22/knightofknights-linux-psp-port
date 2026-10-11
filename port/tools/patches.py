@@ -149,6 +149,12 @@ FUNC = [("g_424000.c", "427c30", _ITEM_KIND)] + \
         (r"(    switch \(M32\(0x4a8500\)\) \{\n)", r"\1        case 6:\n            game_menu_char_back();\n            VRET;\n", 1),
         (r"(            if \(\(M32\(0x4a84ec\) == 0\)\) \{\n                f_439240\(0x480340\);\n)",
          r"\1                if (game_menu_back(3)) {\n                    (MU32(0x488c68) = 1); (MF(0x488c6c) = 0.0f); (MU32(0x488c70) = 0x3ccccccd);\n                    (M32(0x4a8500) = 6);\n                    VRET;\n                }\n", 1)]),
+    # port: the minimap (sprites 0x2c..0x5c, a 7x7 grid laid out by FUN_00439800 and coloured by
+    # FUN_0043f4c0) is drawn as one centred block; per-sprite HUD anchoring would tear the grid
+    # apart across the screen thirds and scale every tile up (dx.c im_hud_center)
+    ("g_440000.c", "4406e0", [
+        (r"(\s+)(COM_D3DDev2_DrawPrimitive\(MU32\(0x4a387c\), 5, 3, \(0x49b778 \+ \(uint32_t\)\(\(iVar2 \* 0x8c\)\)\), 4, 1\);)",
+         r"\1im_hud_center(iVar2 >= 0x2c && iVar2 <= 0x5c);\1\2\1im_hud_center(0);", 1)]),
     # ring pages (magic 0x42c9f0, items 0x42cb50, 0x42ccb0): each icon's angle is fild [esp+0x18] =
     # ebx, the 0, 360, 720... counter; Ghidra used the slot index (or a string pointer), so every icon
     # sat within a degree of the first one while the slots stayed separately selectable

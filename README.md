@@ -8,7 +8,9 @@ and runs in a small virtual machine. The Win32 / DirectDraw / Direct3D Retained 
 DirectSound layer it depends on is reimplemented in `port/src`.
 
 **This repository contains no game files and no decompiled code.** You need your own copy of the
-original game (version 0.50). The decompile and all game data are produced locally from it.
+original game (version 0.50), available from Tomoshibi's site at
+<https://www.tomoshibi.net/content/soft/game/KOK.html>. The decompile and all game data are
+produced locally from it.
 
 ## Repository layout
 
@@ -26,8 +28,9 @@ original game (version 0.50). The decompile and all game data are produced local
 
 ## Requirements
 
-- The original game: copy its installation folder (the one with `Knight of Knights.exe`, `dat/`,
-  `obj/`, `pic/` ...) to `game/Knight050/` next to `port/`.
+- The original game ([download](https://www.tomoshibi.net/content/soft/game/KOK.html)): copy its
+  installation folder (the one with `Knight of Knights.exe`, `dat/`, `obj/`, `pic/` ...) to
+  `game/Knight050/` next to `port/`.
   Expected exe MD5: `9f24022f66b8fa6ae4a82057bd1d3b33`.
 - Linux with: `cmake`, a C compiler, `python3`, `binutils` (objdump).
 - To generate the game code: Ghidra 12.x (headless) with JDK 21, and a Python venv with
@@ -136,7 +139,7 @@ PSP-2000 and later models (and PPSSPP), not on the PSP-1000.
 | Jump | C | Cross |
 | Use item | V | Circle |
 | Item ring / pick up | S | R |
-| Minimap | F1 | Select |
+| Minimap (dungeon floors) | F1 | Select |
 | Pause (battle) | Enter or P | Start |
 | Quit | Esc | Home |
 
@@ -149,6 +152,10 @@ Menus and the item ring:
 | Ring: select / equip | Z or X | Cross |
 | Ring: close | S | Circle or R |
 | Ring: drop item | C | Square |
+
+The minimap only exists on the randomly generated dungeon floors (maps 2, 4 and 6, as in the
+original); the fixed maps, such as the first stage, have none. It is a translucent overlay over the
+middle of the screen.
 
 The original game has no back key. The port adds one: it returns from character select to stage
 select, from stage select to mode select, and from mode select to the title; in the options it
